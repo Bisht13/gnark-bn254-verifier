@@ -235,9 +235,7 @@ pub(crate) fn batch_verify_multi_points(
     let pairing_result =
         Bn254::multi_pairing([folded_digests, folded_quotients], [vk.g2[0], vk.g2[1]]);
 
-    let expected = Bn254::pairing(G1Affine::identity(), G2Affine::identity());
-
-    if pairing_result != expected {
+    if !pairing_result.is_zero() {
         return Err(anyhow!(ERR_PAIRING_CHECK_FAILED));
     }
 
