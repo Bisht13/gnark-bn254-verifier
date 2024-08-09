@@ -80,9 +80,6 @@ impl Transcript {
 
         // Reset the hash function before and after computing the challenge
         self.h.reset();
-        {
-            let _guard = scopeguard::guard(&mut self.h, |h| h.reset());
-        }
 
         self.h.update(challenge_id.as_bytes());
 

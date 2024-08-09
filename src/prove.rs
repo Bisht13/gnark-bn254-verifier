@@ -1,5 +1,6 @@
 use crate::kzg::{BatchOpeningProof, Digest, OpeningProof};
 
+#[derive(Debug)]
 pub(crate) struct Proof {
     pub(crate) lro: [Digest; 3],
     pub(crate) z: Digest,

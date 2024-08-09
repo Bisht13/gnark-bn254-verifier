@@ -18,6 +18,9 @@ pub fn verify(proof_path: &str, vk_path: &str, public_inputs: &[Fr]) -> bool {
 
     match verify_plonk(&vk, &proof, public_inputs) {
         Ok(result) => result,
-        Err(_) => false,
+        Err(e) => {
+            println!("Error: {:?}", e);
+            false
+        }
     }
 }

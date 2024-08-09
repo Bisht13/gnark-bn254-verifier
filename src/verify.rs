@@ -17,6 +17,7 @@ use crate::{
     transcript::Transcript,
 };
 
+#[derive(Debug)]
 pub(crate) struct VerifyingKey {
     pub(crate) size: usize,
     pub(crate) size_inv: Fr,
@@ -135,26 +136,27 @@ pub(crate) fn verify_plonk(
     accw = Fr::one();
     let mut xi_li = zh_zeta;
     for (i, public_input) in public_inputs.iter().enumerate() {
+        xi_li = zh_zeta;
         xi_li *= &inv_dens[i];
         xi_li *= &vk.size_inv;
         xi_li *= &accw;
         xi_li *= public_input; // Pi[i]*(ωⁱ/n)(ζ^n-1)/(ζ-ω^i)
         accw *= &vk.generator;
         pi += &xi_li;
-        xi_li = zh_zeta;
     }
 
     let mut hash_to_field = crate::hash_to_field::WrappedHashToField::new(b"BSB22-Plonk")?;
-
-    for &index in &vk.commitment_constraint_indexes {
+    for i in 0..vk.commitment_constraint_indexes.len() {
         // Hash the commitment
-        hash_to_field.write(&g1_to_bytes(&proof.bsb22_commitments[index])?);
+        hash_to_field.write(&g1_to_bytes(&proof.bsb22_commitments[i])?);
         let hash_bts = hash_to_field.sum()?;
         hash_to_field.reset();
         let hashed_cmt = Fr::from_be_bytes_mod_order(&hash_bts);
 
         // Computing Lᵢ(ζ) where i=CommitmentIndex
-        let w_pow_i = vk.generator.pow(&[(vk.nb_public_variables + index) as u64]);
+        let w_pow_i = vk
+            .generator
+            .pow(&[(vk.nb_public_variables + vk.commitment_constraint_indexes[i]) as u64]);
         let mut den = zeta;
         den -= &w_pow_i; // ζ-wⁱ
         let mut lagrange = zh_zeta;
