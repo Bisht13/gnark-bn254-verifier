@@ -123,6 +123,22 @@ fn gnark_compressed_x_to_g2_point(buf: &[u8]) -> Result<G2Affine> {
     Ok(p)
 }
 
+pub fn gnark_uncompressed_bytes_to_g1_point(buf: &[u8]) -> Result<G1Affine> {
+    if buf.len() != 64 {
+        return Err(anyhow!(SerializationError::InvalidData));
+    };
+
+    let (x_bytes, y_bytes) = buf.split_at(32);
+
+    let x = Fq::from_be_bytes_mod_order(&x_bytes.to_vec());
+    let y = Fq::from_be_bytes_mod_order(&y_bytes.to_vec());
+    let p = G1Affine::new_unchecked(x, y);
+    if !p.is_on_curve() {
+        return Err(anyhow!(SerializationError::InvalidData));
+    }
+    Ok(p)
+}
+
 pub(crate) fn load_verifying_key(buffer: &[u8]) -> Result<VerifyingKey> {
     let size = u64::from_be_bytes([
         buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5], buffer[6], buffer[7],
@@ -291,61 +307,50 @@ pub(crate) fn load_proof(buffer: &[u8]) -> Result<Proof> {
 }
 
 pub(crate) fn load_proof_from_bytes(buffer: &[u8]) -> Result<Proof> {
-    let lro0 = gnark_compressed_x_to_g1_point(&buffer[..32])?;
+    let lro0 = gnark_uncompressed_bytes_to_g1_point(&buffer[..64])?;
     // Skip 32 bytes
-    let lro1 = gnark_compressed_x_to_g1_point(&buffer[64..96])?;
+    let lro1 = gnark_uncompressed_bytes_to_g1_point(&buffer[64..128])?;
     // Skip 32 bytes
-    let lro2 = gnark_compressed_x_to_g1_point(&buffer[128..160])?;
+    let lro2 = gnark_uncompressed_bytes_to_g1_point(&buffer[128..192])?;
     // Skip 32 bytes
-    let z = gnark_compressed_x_to_g1_point(&buffer[192..224])?;
+    let z = gnark_uncompressed_bytes_to_g1_point(&buffer[192..256])?;
     // Skip 32 bytes
-    let h0 = gnark_compressed_x_to_g1_point(&buffer[256..288])?;
+    let h0 = gnark_uncompressed_bytes_to_g1_point(&buffer[256..320])?;
     // Skip 32 bytes
-    let h1 = gnark_compressed_x_to_g1_point(&buffer[320..352])?;
+    let h1 = gnark_uncompressed_bytes_to_g1_point(&buffer[320..384])?;
     // Skip 32 bytes
-    let h2 = gnark_compressed_x_to_g1_point(&buffer[384..416])?;
+    let h2 = gnark_uncompressed_bytes_to_g1_point(&buffer[384..448])?;
     // Skip 32 bytes
-    let batched_proof_h = gnark_compressed_x_to_g1_point(&buffer[448..480])?;
+    let batched_proof_h = gnark_uncompressed_bytes_to_g1_point(&buffer[448..512])?;
     // Skip 32 bytes
 
-    // Read 8 bytes
-    let num_claimed_values = u64::from_be_bytes([
-        buffer[480],
-        buffer[481],
-        buffer[482],
-        buffer[483],
-        buffer[484],
-        buffer[485],
-        buffer[486],
-        buffer[487],
-    ]) as usize;
+    // Read 4 bytes
+    let num_claimed_values =
+        u32::from_be_bytes([buffer[512], buffer[513], buffer[514], buffer[515]]) as usize;
+
     let mut claimed_values = Vec::new();
-    let mut offset = 488;
+    let mut offset = 516;
     for _ in 0..num_claimed_values {
         let value = Fr::from_be_bytes_mod_order(&buffer[offset..offset + 32]);
         claimed_values.push(value);
         offset += 32;
     }
 
-    let z_shifted_opening_h = gnark_compressed_x_to_g1_point(&buffer[offset..offset + 32])?;
+    let z_shifted_opening_h = gnark_uncompressed_bytes_to_g1_point(&buffer[offset..offset + 64])?;
     // Skip 32 bytes
     let z_shifted_opening_value = Fr::from_be_bytes_mod_order(&buffer[offset + 64..offset + 96]);
 
     // Read 8 bytes
-    let num_bsb22_commitments = u64::from_be_bytes([
+    let num_bsb22_commitments = u32::from_be_bytes([
         buffer[offset + 96],
         buffer[offset + 97],
         buffer[offset + 98],
         buffer[offset + 99],
-        buffer[offset + 100],
-        buffer[offset + 101],
-        buffer[offset + 102],
-        buffer[offset + 103],
     ]) as usize;
     let mut bsb22_commitments = Vec::new();
-    offset += 104;
+    offset += 100;
     for _ in 0..num_bsb22_commitments {
-        let commitment = gnark_compressed_x_to_g1_point(&buffer[offset..offset + 32])?;
+        let commitment = gnark_uncompressed_bytes_to_g1_point(&buffer[offset..offset + 64])?;
         bsb22_commitments.push(commitment);
         offset += 64;
     }
