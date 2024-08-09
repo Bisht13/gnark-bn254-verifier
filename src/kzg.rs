@@ -1,8 +1,7 @@
 use anyhow::{anyhow, Result};
 use ark_bn254::{g1::G1Affine, Bn254, Fr, G1Projective, G2Affine};
 use ark_ec::{pairing::Pairing, CurveGroup, VariableBaseMSM};
-use ark_ff::{BigInteger, PrimeField, UniformRand};
-use num_traits::{One, Zero};
+use ark_ff::{BigInteger, One, PrimeField, UniformRand, Zero};
 use rand::rngs::OsRng;
 use std::ops::Mul;
 
