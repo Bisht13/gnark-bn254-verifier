@@ -14,6 +14,8 @@ pub(crate) const ERR_FAILED_TO_GET_X: &str = "Failed to get x";
 pub(crate) const ERR_FAILED_TO_GET_Y: &str = "Failed to get y";
 pub(crate) const ERR_FAILED_TO_GET_FR_FROM_RANDOM_BYTES: &str =
     "Failed to get Fr from random bytes";
+pub(crate) const ERR_ELL_TOO_LARGE: &str = "ell too large";
+pub(crate) const ERR_DST_TOO_LARGE: &str = "dst too large";
 
 pub(crate) const GAMMA: &str = "gamma";
 pub(crate) const BETA: &str = "beta";

@@ -2,6 +2,8 @@ use anyhow::Result;
 use sha2::Digest;
 use std::hash::Hasher;
 
+use crate::constants::{ERR_DST_TOO_LARGE, ERR_ELL_TOO_LARGE};
+
 #[allow(dead_code)]
 pub(crate) struct WrappedHashToField {
     domain: Vec<u8>,
@@ -45,10 +47,10 @@ impl WrappedHashToField {
         let ell = (len + 32 - 1) / 32;
 
         if ell > 255 {
-            panic!("ell too large");
+            Err(anyhow::anyhow!(ERR_ELL_TOO_LARGE))?;
         }
         if dst.len() > 255 {
-            panic!("dst too large");
+            Err(anyhow::anyhow!(ERR_DST_TOO_LARGE))?;
         }
 
         let size_domain = dst.len();
