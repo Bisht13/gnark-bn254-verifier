@@ -308,23 +308,17 @@ pub(crate) fn load_proof(buffer: &[u8]) -> Result<Proof> {
 
 pub(crate) fn load_proof_from_bytes(buffer: &[u8]) -> Result<Proof> {
     let lro0 = gnark_uncompressed_bytes_to_g1_point(&buffer[..64])?;
-    // Skip 32 bytes
     let lro1 = gnark_uncompressed_bytes_to_g1_point(&buffer[64..128])?;
-    // Skip 32 bytes
     let lro2 = gnark_uncompressed_bytes_to_g1_point(&buffer[128..192])?;
-    // Skip 32 bytes
-    let z = gnark_uncompressed_bytes_to_g1_point(&buffer[192..256])?;
-    // Skip 32 bytes
-    let h0 = gnark_uncompressed_bytes_to_g1_point(&buffer[256..320])?;
-    // Skip 32 bytes
-    let h1 = gnark_uncompressed_bytes_to_g1_point(&buffer[320..384])?;
-    // Skip 32 bytes
-    let h2 = gnark_uncompressed_bytes_to_g1_point(&buffer[384..448])?;
-    // Skip 32 bytes
-    let batched_proof_h = gnark_uncompressed_bytes_to_g1_point(&buffer[448..512])?;
-    // Skip 32 bytes
 
-    // Read 4 bytes
+    let z = gnark_uncompressed_bytes_to_g1_point(&buffer[192..256])?;
+
+    let h0 = gnark_uncompressed_bytes_to_g1_point(&buffer[256..320])?;
+    let h1 = gnark_uncompressed_bytes_to_g1_point(&buffer[320..384])?;
+    let h2 = gnark_uncompressed_bytes_to_g1_point(&buffer[384..448])?;
+
+    let batched_proof_h = gnark_uncompressed_bytes_to_g1_point(&buffer[448..512])?;
+
     let num_claimed_values =
         u32::from_be_bytes([buffer[512], buffer[513], buffer[514], buffer[515]]) as usize;
 
@@ -337,10 +331,8 @@ pub(crate) fn load_proof_from_bytes(buffer: &[u8]) -> Result<Proof> {
     }
 
     let z_shifted_opening_h = gnark_uncompressed_bytes_to_g1_point(&buffer[offset..offset + 64])?;
-    // Skip 32 bytes
     let z_shifted_opening_value = Fr::from_be_bytes_mod_order(&buffer[offset + 64..offset + 96]);
 
-    // Read 8 bytes
     let num_bsb22_commitments = u32::from_be_bytes([
         buffer[offset + 96],
         buffer[offset + 97],
