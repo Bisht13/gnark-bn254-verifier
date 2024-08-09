@@ -134,7 +134,7 @@ pub(crate) fn verify_plonk(
     let inv_dens = batch_invert(&dens)?;
 
     accw = Fr::one();
-    let mut xi_li = zh_zeta;
+    let mut xi_li;
     for (i, public_input) in public_inputs.iter().enumerate() {
         xi_li = zh_zeta;
         xi_li *= &inv_dens[i];

@@ -16,7 +16,11 @@ use ark_bn254::Fr;
 use plonk_verifier::verify;
 
 fn main() {
-    if verify("proof.bin", "vk.bin", &[Fr::from(1u8), Fr::from(7u8)]) {
+
+    let proof = vec![0u8; 1000];
+    let vk = vec![0u8; 1000];
+
+    if verify(&proof, &vk, &[Fr::from(1u8), Fr::from(7u8)]) {
         println!("Proof is valid");
     } else {
         println!("Proof is invalid");

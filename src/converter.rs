@@ -239,6 +239,7 @@ pub(crate) fn load_verifying_key(buffer: &[u8]) -> Result<VerifyingKey> {
     })
 }
 
+#[allow(dead_code)]
 pub(crate) fn load_proof(buffer: &[u8]) -> Result<Proof> {
     let lro0 = gnark_compressed_x_to_g1_point(&buffer[..32])?;
     let lro1 = gnark_compressed_x_to_g1_point(&buffer[32..64])?;
@@ -272,6 +273,82 @@ pub(crate) fn load_proof(buffer: &[u8]) -> Result<Proof> {
 
     let z_shifted_opening_h = gnark_compressed_x_to_g1_point(&buffer[offset..offset + 32])?;
     let z_shifted_opening_value = Fr::from_be_bytes_mod_order(&buffer[offset + 32..offset + 64]);
+
+    Ok(Proof {
+        lro: [lro0, lro1, lro2],
+        z,
+        h: [h0, h1, h2],
+        bsb22_commitments,
+        batched_proof: BatchOpeningProof {
+            h: batched_proof_h,
+            claimed_values,
+        },
+        z_shifted_opening: OpeningProof {
+            h: z_shifted_opening_h,
+            claimed_value: z_shifted_opening_value,
+        },
+    })
+}
+
+pub(crate) fn load_proof_from_bytes(buffer: &[u8]) -> Result<Proof> {
+    let lro0 = gnark_compressed_x_to_g1_point(&buffer[..32])?;
+    // Skip 32 bytes
+    let lro1 = gnark_compressed_x_to_g1_point(&buffer[64..96])?;
+    // Skip 32 bytes
+    let lro2 = gnark_compressed_x_to_g1_point(&buffer[128..160])?;
+    // Skip 32 bytes
+    let z = gnark_compressed_x_to_g1_point(&buffer[192..224])?;
+    // Skip 32 bytes
+    let h0 = gnark_compressed_x_to_g1_point(&buffer[256..288])?;
+    // Skip 32 bytes
+    let h1 = gnark_compressed_x_to_g1_point(&buffer[320..352])?;
+    // Skip 32 bytes
+    let h2 = gnark_compressed_x_to_g1_point(&buffer[384..416])?;
+    // Skip 32 bytes
+    let batched_proof_h = gnark_compressed_x_to_g1_point(&buffer[448..480])?;
+    // Skip 32 bytes
+
+    // Read 8 bytes
+    let num_claimed_values = u64::from_be_bytes([
+        buffer[480],
+        buffer[481],
+        buffer[482],
+        buffer[483],
+        buffer[484],
+        buffer[485],
+        buffer[486],
+        buffer[487],
+    ]) as usize;
+    let mut claimed_values = Vec::new();
+    let mut offset = 488;
+    for _ in 0..num_claimed_values {
+        let value = Fr::from_be_bytes_mod_order(&buffer[offset..offset + 32]);
+        claimed_values.push(value);
+        offset += 32;
+    }
+
+    let z_shifted_opening_h = gnark_compressed_x_to_g1_point(&buffer[offset..offset + 32])?;
+    // Skip 32 bytes
+    let z_shifted_opening_value = Fr::from_be_bytes_mod_order(&buffer[offset + 64..offset + 96]);
+
+    // Read 8 bytes
+    let num_bsb22_commitments = u64::from_be_bytes([
+        buffer[offset + 96],
+        buffer[offset + 97],
+        buffer[offset + 98],
+        buffer[offset + 99],
+        buffer[offset + 100],
+        buffer[offset + 101],
+        buffer[offset + 102],
+        buffer[offset + 103],
+    ]) as usize;
+    let mut bsb22_commitments = Vec::new();
+    offset += 104;
+    for _ in 0..num_bsb22_commitments {
+        let commitment = gnark_compressed_x_to_g1_point(&buffer[offset..offset + 32])?;
+        bsb22_commitments.push(commitment);
+        offset += 64;
+    }
 
     Ok(Proof {
         lro: [lro0, lro1, lro2],
