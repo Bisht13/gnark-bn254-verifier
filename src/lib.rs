@@ -12,9 +12,9 @@ mod prove;
 mod transcript;
 mod verify;
 
-pub fn verify(proof_path: &str, vk_path: &str, public_inputs: &[Fr]) -> bool {
-    let proof = load_proof(proof_path).unwrap();
-    let vk = load_verifying_key(vk_path).unwrap();
+pub fn verify(proof: &[u8], vk: &[u8], public_inputs: &[Fr]) -> bool {
+    let proof = load_proof(proof).unwrap();
+    let vk = load_verifying_key(vk).unwrap();
 
     match verify_plonk(&vk, &proof, public_inputs) {
         Ok(result) => result,

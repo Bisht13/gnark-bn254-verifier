@@ -123,9 +123,7 @@ fn gnark_compressed_x_to_g2_point(buf: &[u8]) -> Result<G2Affine> {
     Ok(p)
 }
 
-pub(crate) fn load_verifying_key(path: &str) -> Result<VerifyingKey> {
-    let buffer = std::fs::read(path)?;
-
+pub(crate) fn load_verifying_key(buffer: &[u8]) -> Result<VerifyingKey> {
     let size = u64::from_be_bytes([
         buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5], buffer[6], buffer[7],
     ]) as usize;
@@ -241,9 +239,7 @@ pub(crate) fn load_verifying_key(path: &str) -> Result<VerifyingKey> {
     })
 }
 
-pub(crate) fn load_proof(path: &str) -> Result<Proof> {
-    let buffer = std::fs::read(path)?;
-
+pub(crate) fn load_proof(buffer: &[u8]) -> Result<Proof> {
     let lro0 = gnark_compressed_x_to_g1_point(&buffer[..32])?;
     let lro1 = gnark_compressed_x_to_g1_point(&buffer[32..64])?;
     let lro2 = gnark_compressed_x_to_g1_point(&buffer[64..96])?;
