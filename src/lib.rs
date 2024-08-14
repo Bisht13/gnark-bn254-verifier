@@ -1,4 +1,4 @@
-use ark_bn254::Fr;
+pub use ark_bn254::Fr;
 
 use converter::{
     load_groth16_proof_from_bytes, load_groth16_verifying_key_from_bytes,

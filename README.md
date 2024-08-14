@@ -40,8 +40,7 @@ gnark-bn254-verifier = "1.0.0"
 
 Then, you can verify a proof by calling the `verify` function:
 ```rs
-use ark_bn254::Fr;
-use gnark_bn254_verifier::{verify, ProvingSystem};
+use gnark_bn254_verifier::{verify, ProvingSystem, Fr};
 
 fn main() {
 
