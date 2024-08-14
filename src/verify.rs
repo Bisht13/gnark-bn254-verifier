@@ -1,9 +1,11 @@
 use std::hash::Hasher;
 
 use anyhow::{anyhow, Result};
-use ark_bn254::{Fr, G1Affine, G1Projective};
+use ark_bn254::{Bn254, Fr, G1Affine, G1Projective, G2Affine};
 use ark_ec::{CurveGroup, VariableBaseMSM};
 use ark_ff::{batch_inversion, BigInteger, Field, One, PrimeField, Zero};
+use ark_groth16::{Groth16, Proof as ArkGroth16Proof, VerifyingKey as ArkGroth16VerifyingKey};
+use ark_snark::SNARK;
 
 use crate::{
     constants::{
@@ -18,13 +20,13 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub(crate) struct VerifyingKey {
+pub(crate) struct PlonkVerifyingKey {
     pub(crate) size: usize,
     pub(crate) size_inv: Fr,
     pub(crate) generator: Fr,
     pub(crate) nb_public_variables: usize,
 
-    pub(crate) kzg: kzg::VerifyingKey,
+    pub(crate) kzg: kzg::KZGVerifyingKey,
 
     pub(crate) coset_shift: Fr,
 
@@ -40,9 +42,65 @@ pub(crate) struct VerifyingKey {
     pub(crate) commitment_constraint_indexes: Vec<usize>,
 }
 
+#[allow(dead_code)]
+pub(crate) struct Groth16G1 {
+    pub(crate) alpha: G1Affine,
+    pub(crate) beta: G1Affine,
+    pub(crate) delta: G1Affine,
+    pub(crate) k: Vec<G1Affine>,
+}
+
+#[derive(Debug)]
+pub(crate) struct Groth16G2 {
+    pub(crate) beta: G2Affine,
+    pub(crate) delta: G2Affine,
+    pub(crate) gamma: G2Affine,
+}
+
+#[allow(dead_code)]
+pub(crate) struct PedersenVerifyingKey {
+    pub(crate) g: G2Affine,
+    pub(crate) g_root_sigma_neg: G2Affine,
+}
+
+#[allow(dead_code)]
+pub(crate) struct Groth16VerifyingKey {
+    pub(crate) g1: Groth16G1,
+    pub(crate) g2: Groth16G2,
+    pub(crate) commitment_key: PedersenVerifyingKey,
+    pub(crate) public_and_commitment_committed: Vec<Vec<u32>>,
+}
+
+pub(crate) fn verify_groth16(
+    vk: &Groth16VerifyingKey,
+    proof: &prove::Groth16Proof,
+    public_inputs: &[Fr],
+) -> Result<bool> {
+    let proof: ArkGroth16Proof<Bn254> = ArkGroth16Proof {
+        a: proof.ar,
+        b: proof.bs,
+        c: proof.krs,
+    };
+    let vk: ArkGroth16VerifyingKey<Bn254> = ArkGroth16VerifyingKey {
+        alpha_g1: vk.g1.alpha,
+        beta_g2: vk.g2.beta,
+        gamma_g2: vk.g2.gamma,
+        delta_g2: vk.g2.delta,
+        gamma_abc_g1: vk.g1.k.clone(),
+    };
+
+    let pvk = Groth16::<Bn254>::process_vk(&vk)?;
+
+    Ok(Groth16::<Bn254>::verify_with_processed_vk(
+        &pvk,
+        public_inputs,
+        &proof,
+    )?)
+}
+
 pub(crate) fn verify_plonk(
-    vk: &VerifyingKey,
-    proof: &prove::Proof,
+    vk: &PlonkVerifyingKey,
+    proof: &prove::PlonkProof,
     public_inputs: &[Fr],
 ) -> Result<bool> {
     if proof.bsb22_commitments.len() != vk.qcp.len() {
@@ -312,7 +370,7 @@ pub(crate) fn verify_plonk(
 fn bind_public_data(
     transcript: &mut Transcript,
     challenge: &str,
-    vk: &VerifyingKey,
+    vk: &PlonkVerifyingKey,
     public_inputs: &[Fr],
 ) -> Result<()> {
     transcript.bind(challenge, &g1_to_bytes(&vk.s[0])?)?;

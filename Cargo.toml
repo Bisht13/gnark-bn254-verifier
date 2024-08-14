@@ -1,5 +1,5 @@
 [package]
-name = "plonk-verifier"
+name = "gnark-bn254-verifier"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,7 +8,9 @@ anyhow = "1.0.86"
 ark-bn254 = "0.4.0"
 ark-ec = "0.4.2"
 ark-ff = "0.4.2"
+ark-groth16 = "0.4.0"
 ark-serialize = "0.4.2"
+ark-snark = "0.4.0"
 lazy_static = "1.5.0"
 num-bigint = "0.4.6"
 num-traits = "0.2.19"
