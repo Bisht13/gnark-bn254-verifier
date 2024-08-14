@@ -30,7 +30,7 @@ pub(crate) struct LineEvaluationAff {
 
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
-pub(crate) struct VerifyingKey {
+pub(crate) struct KZGVerifyingKey {
     pub(crate) g2: [G2Affine; 2], // [G₂, [α]G₂]
     pub(crate) g1: G1Affine,
     // Precomputed pairing lines corresponding to G₂, [α]G₂
@@ -139,7 +139,7 @@ pub(crate) fn fold_proof(
 //     commitment: &Digest,
 //     proof: &OpeningProof,
 //     point: &Fr,
-//     vk: &VerifyingKey,
+//     vk: &PlonkVerifyingKey,
 // ) -> Result<bool, &'static str> {
 //     let mut total_g1 = G1Projective::zero();
 //     let point_neg = -point;
@@ -176,7 +176,7 @@ pub(crate) fn batch_verify_multi_points(
     digests: Vec<Digest>,
     proofs: Vec<OpeningProof>,
     points: Vec<Fr>,
-    vk: &VerifyingKey,
+    vk: &KZGVerifyingKey,
 ) -> Result<()> {
     let nb_digests = digests.len();
     let nb_proofs = proofs.len();
