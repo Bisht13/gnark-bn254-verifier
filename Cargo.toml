@@ -1,7 +1,15 @@
 [package]
 name = "gnark-bn254-verifier"
-version = "0.1.0"
+authors = [ "Aditya Bisht" ]
+description = "A rust gnark verifier for BN254 curve"
+repository = "https://github.com/Bisht13/gnark-bn254-verifier"
+keywords = [ "zero-knowledge", "cryptography", "zkSNARK", "SNARK", "gnark" ]
+categories = [ "cryptography" ]
+readme = "README.md"
+include = ["Cargo.toml", "src", "README.md", "LICENSE-APACHE", "LICENSE-MIT"]
+license = "MIT/Apache-2.0"
 edition = "2021"
+version = "1.0.0"
 
 [dependencies]
 anyhow = "1.0.86"
