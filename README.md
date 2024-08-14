@@ -35,7 +35,7 @@ if err != nil {
 To use this library, add it as a dependency in your `Cargo.toml`:
 ```toml
 [dependencies]
-gnark-bn254-verifier = "1.0.0"
+gnark-bn254-verifier = "1.0.2"
 ```
 
 Then, you can verify a proof by calling the `verify` function:
