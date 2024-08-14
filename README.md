@@ -45,8 +45,8 @@ use gnark_bn254_verifier::{verify, ProvingSystem};
 
 fn main() {
 
-    let proof = vec![0u8; 1000];
-    let vk = vec![0u8; 1000];
+    let proof = std::fs::read("proof.bin").unwrap();
+    let vk = std::fs::read("vk.bin").unwrap();
 
     if verify(&proof, &vk, &[Fr::from(1u8), Fr::from(7u8)], ProvingSystem::Plonk) {
         println!("Proof is valid");
