@@ -18,7 +18,7 @@ if err != nil {
     panic(err)
 }
 
-// Write the proving key.
+// Write the proof.
 proofFile, err := os.Create("proof.bin")
 if err != nil {
     panic(err)
