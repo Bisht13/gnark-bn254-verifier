@@ -21,3 +21,13 @@ pub(crate) const GAMMA: &str = "gamma";
 pub(crate) const BETA: &str = "beta";
 pub(crate) const ALPHA: &str = "alpha";
 pub(crate) const ZETA: &str = "zeta";
+
+pub const GNARK_MASK: u8 = 0b11 << 6;
+pub const GNARK_COMPRESSED_POSTIVE: u8 = 0b10 << 6;
+pub const GNARK_COMPRESSED_NEGATIVE: u8 = 0b11 << 6;
+pub const GNARK_COMPRESSED_INFINITY: u8 = 0b01 << 6;
+
+pub const ARK_MASK: u8 = 0b11 << 6;
+pub const ARK_COMPRESSED_POSTIVE: u8 = 0b00 << 6;
+pub const ARK_COMPRESSED_NEGATIVE: u8 = 0b10 << 6;
+pub const ARK_COMPRESSED_INFINITY: u8 = 0b01 << 6;

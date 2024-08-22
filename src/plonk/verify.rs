@@ -1,24 +1,19 @@
 use std::hash::Hasher;
 
-use anyhow::{anyhow, Result};
-use ark_bn254::{Bn254, Fr, G1Affine, G1Projective, G2Affine};
-use ark_ec::{CurveGroup, VariableBaseMSM};
-use ark_ff::{batch_inversion, BigInteger, Field, One, PrimeField, Zero};
-use ark_groth16::{Groth16, Proof as ArkGroth16Proof, VerifyingKey as ArkGroth16VerifyingKey};
-use ark_snark::SNARK;
+use anyhow::{anyhow, Error, Result};
+//use ark_bn254::{Fr, G1Affine, G1Projective};
+use ark_ff::batch_inversion;
+use substrate_bn::{AffineG1, Fr};
 
 use crate::{
     constants::{
-        ALPHA, BETA, ERR_BSB22_COMMITMENT_MISMATCH, ERR_INVALID_POINT, ERR_INVALID_WITNESS,
-        ERR_INVERSE_NOT_FOUND, ERR_OPENING_POLY_MISMATCH, GAMMA, ZETA,
+        ALPHA, BETA, ERR_BSB22_COMMITMENT_MISMATCH, ERR_INVALID_WITNESS, ERR_INVERSE_NOT_FOUND,
+        ERR_OPENING_POLY_MISMATCH, GAMMA, ZETA,
     },
-    converter::g1_to_bytes,
-    element::PlonkFr,
-    kzg::{self, is_in_subgroup},
-    prove,
     transcript::Transcript,
 };
 
+use super::{converter::g1_to_bytes, element::PlonkFr, kzg, PlonkProof};
 #[derive(Debug)]
 pub(crate) struct PlonkVerifyingKey {
     pub(crate) size: usize,
@@ -42,65 +37,9 @@ pub(crate) struct PlonkVerifyingKey {
     pub(crate) commitment_constraint_indexes: Vec<usize>,
 }
 
-#[allow(dead_code)]
-pub(crate) struct Groth16G1 {
-    pub(crate) alpha: G1Affine,
-    pub(crate) beta: G1Affine,
-    pub(crate) delta: G1Affine,
-    pub(crate) k: Vec<G1Affine>,
-}
-
-#[derive(Debug)]
-pub(crate) struct Groth16G2 {
-    pub(crate) beta: G2Affine,
-    pub(crate) delta: G2Affine,
-    pub(crate) gamma: G2Affine,
-}
-
-#[allow(dead_code)]
-pub(crate) struct PedersenVerifyingKey {
-    pub(crate) g: G2Affine,
-    pub(crate) g_root_sigma_neg: G2Affine,
-}
-
-#[allow(dead_code)]
-pub(crate) struct Groth16VerifyingKey {
-    pub(crate) g1: Groth16G1,
-    pub(crate) g2: Groth16G2,
-    pub(crate) commitment_key: PedersenVerifyingKey,
-    pub(crate) public_and_commitment_committed: Vec<Vec<u32>>,
-}
-
-pub(crate) fn verify_groth16(
-    vk: &Groth16VerifyingKey,
-    proof: &prove::Groth16Proof,
-    public_inputs: &[Fr],
-) -> Result<bool> {
-    let proof: ArkGroth16Proof<Bn254> = ArkGroth16Proof {
-        a: proof.ar,
-        b: proof.bs,
-        c: proof.krs,
-    };
-    let vk: ArkGroth16VerifyingKey<Bn254> = ArkGroth16VerifyingKey {
-        alpha_g1: vk.g1.alpha,
-        beta_g2: vk.g2.beta,
-        gamma_g2: vk.g2.gamma,
-        delta_g2: vk.g2.delta,
-        gamma_abc_g1: vk.g1.k.clone(),
-    };
-
-    let pvk = Groth16::<Bn254>::process_vk(&vk)?;
-
-    Ok(Groth16::<Bn254>::verify_with_processed_vk(
-        &pvk,
-        public_inputs,
-        &proof,
-    )?)
-}
-
-pub(crate) fn verify_plonk(
+pub fn verify_plonk(
     vk: &PlonkVerifyingKey,
-    proof: &prove::PlonkProof,
+    proof: &PlonkProof,
     public_inputs: &[Fr],
 ) -> Result<bool> {
     if proof.bsb22_commitments.len() != vk.qcp.len() {
@@ -109,36 +48,6 @@ pub(crate) fn verify_plonk(
 
     if public_inputs.len() != vk.nb_public_variables {
         return Err(anyhow::anyhow!(ERR_INVALID_WITNESS));
-    }
-
-    for lro in proof.lro.iter() {
-        if !is_in_subgroup(lro)? {
-            return Err(anyhow::anyhow!(ERR_INVALID_POINT));
-        }
-    }
-
-    if !is_in_subgroup(&proof.z)? {
-        return Err(anyhow::anyhow!(ERR_INVALID_POINT));
-    }
-
-    for h in proof.h.iter() {
-        if !is_in_subgroup(h)? {
-            return Err(anyhow::anyhow!(ERR_INVALID_POINT));
-        }
-    }
-
-    for bsb22_commitment in proof.bsb22_commitments.iter() {
-        if !is_in_subgroup(bsb22_commitment)? {
-            return Err(anyhow::anyhow!(ERR_INVALID_POINT));
-        }
-    }
-
-    if !is_in_subgroup(&proof.batched_proof.h)? {
-        return Err(anyhow::anyhow!(ERR_INVALID_POINT));
-    }
-
-    if !is_in_subgroup(&proof.z_shifted_opening.h)? {
-        return Err(anyhow::anyhow!(ERR_INVALID_POINT));
     }
 
     let mut fs = Transcript::new(Some(
@@ -161,7 +70,7 @@ pub(crate) fn verify_plonk(
 
     let beta = derive_randomness(&mut fs, BETA, None)?;
 
-    let mut alpha_deps: Vec<G1Affine> = proof.bsb22_commitments.iter().cloned().collect();
+    let mut alpha_deps: Vec<AffineG1> = proof.bsb22_commitments.iter().cloned().collect();
     alpha_deps.push(proof.z);
     let alpha = derive_randomness(&mut fs, ALPHA, Some(alpha_deps))?;
 
@@ -172,11 +81,11 @@ pub(crate) fn verify_plonk(
     )?;
 
     let one = Fr::one();
-    let zeta_power_m = zeta.pow(&[vk.size as u64]);
-    let zh_zeta = zeta_power_m - &one; // ζⁿ-1
-    let mut lagrange_one = (zeta - &one).inverse().expect(ERR_INVERSE_NOT_FOUND); // 1/(ζ-1)
+    let zeta_power_m = zeta(&[vk.size as u64]);
+    let zh_zeta = zeta_power_m - one; // ζⁿ-1
+    let mut lagrange_one = (zeta - one).inverse().expect(ERR_INVERSE_NOT_FOUND); // 1/(ζ-1)
     lagrange_one *= &zh_zeta; // (ζ^n-1)/(ζ-1)
-    lagrange_one *= &vk.size_inv; // 1/n * (ζ^n-1)/(ζ-1)
+    lagrange_one *= vk.size_inv; // 1/n * (ζ^n-1)/(ζ-1)
 
     let mut pi = Fr::zero();
     let mut accw = Fr::one();
@@ -184,9 +93,9 @@ pub(crate) fn verify_plonk(
 
     for _ in 0..public_inputs.len() {
         let mut temp = zeta;
-        temp -= &accw;
+        temp -= accw;
         dens.push(temp);
-        accw *= &vk.generator;
+        accw *= vk.generator;
     }
 
     let inv_dens = batch_invert(&dens)?;
@@ -199,7 +108,7 @@ pub(crate) fn verify_plonk(
         xi_li *= &vk.size_inv;
         xi_li *= &accw;
         xi_li *= public_input; // Pi[i]*(ωⁱ/n)(ζ^n-1)/(ζ-ω^i)
-        accw *= &vk.generator;
+        accw *= vk.generator;
         pi += &xi_li;
     }
 
@@ -216,7 +125,7 @@ pub(crate) fn verify_plonk(
             .generator
             .pow(&[(vk.nb_public_variables + vk.commitment_constraint_indexes[i]) as u64]);
         let mut den = zeta;
-        den -= &w_pow_i; // ζ-wⁱ
+        den -= w_pow_i; // ζ-wⁱ
         let mut lagrange = zh_zeta;
         lagrange *= &w_pow_i; // wⁱ(ζⁿ-1)
         lagrange /= &den; // wⁱ(ζⁿ-1)/(ζ-wⁱ)
@@ -239,39 +148,39 @@ pub(crate) fn verify_plonk(
     // α²*L₁(ζ)
     let alpha_square_lagrange_one = {
         let mut tmp = lagrange_one;
-        tmp *= &alpha;
-        tmp *= &alpha;
+        tmp *= alpha;
+        tmp *= alpha;
         tmp
     };
 
     // (l(ζ)+β*s1(ζ)+γ)
     let mut tmp = beta;
-    tmp *= &s1;
-    tmp += &gamma;
-    tmp += &l;
+    tmp *= s1;
+    tmp += gamma;
+    tmp += l;
     let mut const_lin = tmp;
 
     // (r(ζ)+β*s2(ζ)+γ)
     tmp = beta;
-    tmp *= &s2;
-    tmp += &gamma;
-    tmp += &r;
+    tmp *= s2;
+    tmp += gamma;
+    tmp += r;
 
     // (l(ζ)+β*s1(ζ)+γ)(r(ζ)+β*s2(ζ)+γ)
-    const_lin *= &tmp;
+    const_lin *= tmp;
 
     // (o(ζ)+γ)
     tmp = o;
-    tmp += &gamma;
+    tmp += gamma;
 
     // α(l(ζ)+β*s1(ζ)+γ)(r(ζ)+β*s2(ζ)+γ)(o(ζ)+γ)*z(ωζ)
-    const_lin *= &tmp;
-    const_lin *= &alpha;
-    const_lin *= &zu;
+    const_lin *= tmp;
+    const_lin *= alpha;
+    const_lin *= zu;
 
     // PI(ζ) - α²*L₁(ζ) + α(l(ζ)+β*s1(ζ)+γ)(r(ζ)+β*s2(ζ)+γ)(o(ζ)+γ)*z(ωζ)
-    const_lin -= &alpha_square_lagrange_one;
-    const_lin += &pi;
+    const_lin -= alpha_square_lagrange_one;
+    const_lin += pi;
 
     // -[PI(ζ) - α²*L₁(ζ) + α(l(ζ)+β*s1(ζ)+γ)(r(ζ)+β*s2(ζ)+γ)(o(ζ)+γ)*z(ωζ)]
     const_lin = -const_lin;
@@ -340,7 +249,7 @@ pub(crate) fn verify_plonk(
         .map_err(|e| anyhow!(e))?
         .into_affine();
 
-    let mut digests_to_fold = vec![G1Affine::default(); vk.qcp.len() + 6];
+    let mut digests_to_fold = vec![AffineG1::default(); vk.qcp.len() + 6];
     digests_to_fold[6..].copy_from_slice(&vk.qcp);
     digests_to_fold[0] = linearized_polynomial_digest;
     digests_to_fold[1] = proof.lro[0];
@@ -353,7 +262,7 @@ pub(crate) fn verify_plonk(
         digests_to_fold,
         &proof.batched_proof,
         &zeta,
-        Some(zu.into_bigint().to_bytes_be()),
+        Some(zu.into_u256().to_bytes_be().map_err(Error::msg)?),
     )?;
 
     let shifted_zeta = zeta * vk.generator;
@@ -388,7 +297,10 @@ fn bind_public_data(
     }
 
     for public_input in public_inputs.iter() {
-        transcript.bind(challenge, &public_input.into_bigint().to_bytes_be())?;
+        transcript.bind(
+            challenge,
+            &public_input.into_u256().to_bytes_be().map_err(Error::msg)?,
+        )?;
     }
 
     Ok(())
@@ -397,7 +309,7 @@ fn bind_public_data(
 fn derive_randomness(
     transcript: &mut Transcript,
     challenge: &str,
-    points: Option<Vec<G1Affine>>,
+    points: Option<Vec<AffineG1>>,
 ) -> Result<Fr> {
     if let Some(points) = points {
         for point in points {

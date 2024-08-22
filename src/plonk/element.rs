@@ -1,10 +1,9 @@
-use anyhow::{Ok, Result};
-use ark_bn254::Fr;
-use ark_ff::{Field, PrimeField, Zero};
+use anyhow::{Error, Ok, Result};
 use lazy_static::lazy_static;
 use num_bigint::{BigInt, Sign};
 use num_traits::Num;
 use std::cmp::Ordering;
+use substrate_bn::Fr;
 
 use crate::constants::ERR_FAILED_TO_GET_FR_FROM_RANDOM_BYTES;
 
@@ -27,7 +26,7 @@ impl PlonkFr {
         if cmp == Ordering::Equal {
             return Ok(PlonkFr(Fr::zero()));
         } else if cmp != Ordering::Greater && bytes.cmp(&[0u8; 32][..]) != Ordering::Less {
-            return Ok(PlonkFr(Fr::from_be_bytes_mod_order(bytes)));
+            return Ok(PlonkFr(Fr::from_slice(bytes).map_err(Error::msg)?));
         }
 
         // Mod the bytes with MODULUS
