@@ -1,9 +1,7 @@
 use std::hash::Hasher;
 
 use anyhow::{anyhow, Error, Result};
-//use ark_bn254::{Fr, G1Affine, G1Projective};
-use ark_ff::batch_inversion;
-use substrate_bn::{AffineG1, Fr};
+use substrate_bn::{arith::U256, AffineG1, CurveError, Fr, G1};
 
 use crate::{
     constants::{
@@ -81,10 +79,12 @@ pub fn verify_plonk(
     )?;
 
     let one = Fr::one();
-    let zeta_power_m = zeta(&[vk.size as u64]);
-    let zh_zeta = zeta_power_m - one; // ζⁿ-1
+    let n = U256::from(vk.size as u64);
+    let n = Fr::new(n).ok_or_else(|| anyhow!("Beyond the modulus"))?;
+    let zeta_power_n = zeta.pow(n);
+    let zh_zeta = zeta_power_n - one; // ζⁿ-1
     let mut lagrange_one = (zeta - one).inverse().expect(ERR_INVERSE_NOT_FOUND); // 1/(ζ-1)
-    lagrange_one *= &zh_zeta; // (ζ^n-1)/(ζ-1)
+    lagrange_one *= zh_zeta; // (ζ^n-1)/(ζ-1)
     lagrange_one *= vk.size_inv; // 1/n * (ζ^n-1)/(ζ-1)
 
     let mut pi = Fr::zero();
@@ -104,12 +104,12 @@ pub fn verify_plonk(
     let mut xi_li;
     for (i, public_input) in public_inputs.iter().enumerate() {
         xi_li = zh_zeta;
-        xi_li *= &inv_dens[i];
-        xi_li *= &vk.size_inv;
-        xi_li *= &accw;
-        xi_li *= public_input; // Pi[i]*(ωⁱ/n)(ζ^n-1)/(ζ-ω^i)
+        xi_li *= inv_dens[i];
+        xi_li *= vk.size_inv;
+        xi_li *= accw;
+        xi_li *= *public_input; // Pi[i]*(ωⁱ/n)(ζ^n-1)/(ζ-ω^i)
         accw *= vk.generator;
-        pi += &xi_li;
+        pi += xi_li;
     }
 
     let mut hash_to_field = crate::hash_to_field::WrappedHashToField::new(b"BSB22-Plonk")?;
@@ -118,22 +118,23 @@ pub fn verify_plonk(
         hash_to_field.write(&g1_to_bytes(&proof.bsb22_commitments[i])?);
         let hash_bts = hash_to_field.sum()?;
         hash_to_field.reset();
-        let hashed_cmt = Fr::from_be_bytes_mod_order(&hash_bts);
+        let hashed_cmt = Fr::from_slice(&hash_bts).map_err(Error::msg)?;
 
         // Computing Lᵢ(ζ) where i=CommitmentIndex
-        let w_pow_i = vk
-            .generator
-            .pow(&[(vk.nb_public_variables + vk.commitment_constraint_indexes[i]) as u64]);
+        let exponent =
+            U256::from((vk.nb_public_variables + vk.commitment_constraint_indexes[i]) as u64);
+        let exponent = Fr::new(exponent).ok_or_else(|| anyhow!("Beyond the modulus"))?;
+        let w_pow_i = vk.generator.pow(exponent);
         let mut den = zeta;
         den -= w_pow_i; // ζ-wⁱ
         let mut lagrange = zh_zeta;
-        lagrange *= &w_pow_i; // wⁱ(ζⁿ-1)
-        lagrange /= &den; // wⁱ(ζⁿ-1)/(ζ-wⁱ)
-        lagrange *= &vk.size_inv; // wⁱ/n (ζⁿ-1)/(ζ-wⁱ)
+        lagrange *= w_pow_i; // wⁱ(ζⁿ-1)
+        lagrange /= den; // wⁱ(ζⁿ-1)/(ζ-wⁱ)
+        lagrange *= vk.size_inv; // wⁱ/n (ζⁿ-1)/(ζ-wⁱ)
 
         xi_li = lagrange;
-        xi_li *= &hashed_cmt;
-        pi += &xi_li;
+        xi_li *= hashed_cmt;
+        pi += xi_li;
     }
 
     let l = proof.batched_proof.claimed_values[1];
@@ -207,8 +208,9 @@ pub fn verify_plonk(
     let coeff_z = alpha_square_lagrange_one + _s2;
     let rl = l * r;
 
-    let n_plus_two = vk.size as u64 + 2;
-    let mut zeta_n_plus_two_zh = zeta.pow([n_plus_two]);
+    let n_plus_two = U256::from(vk.size as u64 + 2);
+    let n_plus_two = Fr::new(n_plus_two).ok_or_else(|| anyhow!("Beyond the modulus"))?;
+    let mut zeta_n_plus_two_zh = zeta.pow(n_plus_two);
     let mut zeta_n_plus_two_square_zh = zeta_n_plus_two_zh * zeta_n_plus_two_zh; // ζ²⁽ⁿ⁺²⁾
     zeta_n_plus_two_zh *= zh_zeta; // ζⁿ⁺²*(ζⁿ-1)
     zeta_n_plus_two_zh = -zeta_n_plus_two_zh; // -ζⁿ⁺²*(ζⁿ-1)
@@ -245,9 +247,9 @@ pub fn verify_plonk(
     scalars.push(zeta_n_plus_two_square_zh);
 
     // Perform the multi-scalar multiplication
-    let linearized_polynomial_digest = G1Projective::msm(&points, &scalars)
-        .map_err(|e| anyhow!(e))?
-        .into_affine();
+    let linearized_polynomial_digest = G1::msm(&points, &scalars)
+        .to_affine()
+        .ok_or_else(|| anyhow!("No affine"))?;
 
     let mut digests_to_fold = vec![AffineG1::default(); vk.qcp.len() + 6];
     digests_to_fold[6..].copy_from_slice(&vk.qcp);
@@ -266,6 +268,10 @@ pub fn verify_plonk(
     )?;
 
     let shifted_zeta = zeta * vk.generator;
+    let folded_digest = folded_digest
+        .to_affine()
+        .ok_or(CurveError::ToAffineConversion)
+        .map_err(Error::msg)?;
     kzg::batch_verify_multi_points(
         [folded_digest, proof.z].to_vec(),
         [folded_proof, proof.z_shifted_opening].to_vec(),
@@ -327,4 +333,49 @@ fn batch_invert(elements: &[Fr]) -> Result<Vec<Fr>> {
     let mut elements = elements.to_vec();
     batch_inversion(&mut elements);
     Ok(elements)
+}
+
+// Given a vector of field elements {v_i}, compute the vector {v_i^(-1)}
+fn batch_inversion(v: &mut [Fr]) {
+    batch_inversion_and_mul(v, &Fr::one());
+}
+
+/// Given a vector of field elements {v_i}, compute the vector {coeff * v_i^(-1)}.
+/// This method is explicitly single-threaded.
+fn batch_inversion_and_mul(v: &mut [Fr], coeff: &Fr) {
+    // Montgomery’s Trick and Fast Implementation of Masked AES
+    // Genelle, Prouff and Quisquater
+    // Section 3.2
+    // but with an optimization to multiply every element in the returned vector by
+    // coeff
+
+    // First pass: compute [a, ab, abc, ...]
+    let mut prod = Vec::with_capacity(v.len());
+    let mut tmp = Fr::one();
+    for f in v.iter().filter(|f| !f.is_zero()) {
+        tmp *= *f;
+        prod.push(tmp);
+    }
+
+    // Invert `tmp`.
+    tmp = tmp.inverse().unwrap(); // Guaranteed to be nonzero.
+
+    // Multiply product by coeff, so all inverses will be scaled by coeff
+    tmp *= *coeff;
+
+    // Second pass: iterate backwards to compute inverses
+    for (f, s) in v
+        .iter_mut()
+        // Backwards
+        .rev()
+        // Ignore normalized elements
+        .filter(|f| !f.is_zero())
+        // Backwards, skip last element, fill in one for last term.
+        .zip(prod.into_iter().rev().skip(1).chain(Some(Fr::one())))
+    {
+        // tmp := tmp * f; f := tmp * s = 1/f
+        let new_tmp = tmp * *f;
+        *f = tmp * s;
+        tmp = new_tmp;
+    }
 }

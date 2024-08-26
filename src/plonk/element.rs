@@ -5,8 +5,6 @@ use num_traits::Num;
 use std::cmp::Ordering;
 use substrate_bn::Fr;
 
-use crate::constants::ERR_FAILED_TO_GET_FR_FROM_RANDOM_BYTES;
-
 #[derive(Clone, Debug)]
 pub(crate) struct PlonkFr(Fr);
 
@@ -33,7 +31,7 @@ impl PlonkFr {
         let biguint_bytes = BigInt::from_bytes_be(Sign::Plus, bytes);
         let biguint_mod = biguint_bytes % &*MODULUS;
         let (_, bytes_le) = biguint_mod.to_bytes_le();
-        let e = Fr::from_random_bytes(&bytes_le).expect(ERR_FAILED_TO_GET_FR_FROM_RANDOM_BYTES);
+        let e = Fr::from_slice(&bytes_le).map_err(Error::msg)?;
 
         Ok(PlonkFr(e))
     }

@@ -1,9 +1,6 @@
 use anyhow::{anyhow, Error, Result};
-use ark_bn254::{Bn254, G1Projective};
-use ark_ec::{pairing::Pairing, CurveGroup, VariableBaseMSM};
-use ark_ff::Zero;
 use rand::rngs::OsRng;
-use substrate_bn::{AffineG1, AffineG2, Fr};
+use substrate_bn::{pairing_batch, AffineG1, Fr, G1, G2};
 
 use crate::{
     constants::{ERR_INVALID_NUMBER_OF_DIGESTS, ERR_PAIRING_CHECK_FAILED, GAMMA},
@@ -31,8 +28,8 @@ pub(crate) struct LineEvaluationAff {
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
 pub(crate) struct KZGVerifyingKey {
-    pub(crate) g2: [AffineG2; 2], // [G₂, [α]G₂]
-    pub(crate) g1: AffineG1,
+    pub(crate) g2: [G2; 2], // [G₂, [α]G₂]
+    pub(crate) g1: G1,
     // Precomputed pairing lines corresponding to G₂, [α]G₂
     pub(crate) lines: [[[LineEvaluationAff; 66]; 2]; 2],
 }
@@ -82,7 +79,7 @@ fn derive_gamma(
     Ok(x)
 }
 
-fn fold(di: Vec<Digest>, fai: Vec<Fr>, ci: Vec<Fr>) -> Result<(Digest, Fr)> {
+fn fold(di: Vec<Digest>, fai: Vec<Fr>, ci: Vec<Fr>) -> Result<(G1, Fr)> {
     let nb_digests = di.len();
 
     let mut folded_evaluations = Fr::zero();
@@ -91,9 +88,7 @@ fn fold(di: Vec<Digest>, fai: Vec<Fr>, ci: Vec<Fr>) -> Result<(Digest, Fr)> {
         folded_evaluations += fai[i] * ci[i];
     }
 
-    let folded_digests = G1Projective::msm(&di, &ci)
-        .map_err(|e| anyhow!(e))?
-        .into_affine();
+    let folded_digests = G1::msm(&di, &ci);
 
     Ok((folded_digests, folded_evaluations))
 }
@@ -103,7 +98,7 @@ pub(crate) fn fold_proof(
     batch_opening_proof: &BatchOpeningProof,
     point: &Fr,
     data_transcript: Option<Vec<u8>>,
-) -> Result<(OpeningProof, Digest)> {
+) -> Result<(OpeningProof, G1)> {
     let nb_digests = digests.len();
 
     if nb_digests != batch_opening_proof.claimed_values.len() {
@@ -208,9 +203,7 @@ pub(crate) fn batch_verify_multi_points(
         quotients.push(proofs[i].h);
     }
 
-    let mut folded_quotients = G1Projective::msm(&quotients, &random_numbers)
-        .map_err(|e| anyhow!(e))?
-        .into_affine();
+    let mut folded_quotients = G1::msm(&quotients, &random_numbers);
 
     let mut evals = Vec::with_capacity(nb_digests);
     for i in 0..nb_digests {
@@ -218,23 +211,20 @@ pub(crate) fn batch_verify_multi_points(
     }
 
     let (mut folded_digests, folded_evals) = fold(digests, evals, random_numbers.clone())?;
-    let folded_evals_commit = vk.g1.mul(folded_evals);
-    folded_digests = (folded_digests - folded_evals_commit.into_affine()).into();
+    let folded_evals_commit = vk.g1 * folded_evals;
+    folded_digests = folded_digests - folded_evals_commit;
 
     for i in 0..random_numbers.len() {
         random_numbers[i] = random_numbers[i] * points[i];
     }
 
-    let folded_points_quotients = G1Projective::msm(&quotients, &random_numbers)
-        .map_err(|e| anyhow!(e))?
-        .into_affine();
+    let folded_points_quotients = G1::msm(&quotients, &random_numbers);
 
-    folded_digests = (folded_digests + folded_points_quotients).into();
+    folded_digests = folded_digests + folded_points_quotients;
     folded_quotients = -folded_quotients;
 
     // Pairing check
-    let pairing_result =
-        Bn254::multi_pairing([folded_digests, folded_quotients], [vk.g2[0], vk.g2[1]]);
+    let pairing_result = pairing_batch(&[(folded_digests, vk.g2[0]), (folded_quotients, vk.g2[1])]);
 
     if !pairing_result.is_zero() {
         return Err(anyhow!(ERR_PAIRING_CHECK_FAILED));

@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Error, Result};
 use ark_serialize::SerializationError;
 use std::cmp::Ordering;
+use std::ops::Neg;
 use substrate_bn::{AffineG1, Fq, Fr, G2};
 
 use crate::{
@@ -150,7 +151,7 @@ pub(crate) fn load_plonk_verifying_key_from_bytes(buffer: &[u8]) -> Result<Plonk
         nb_public_variables,
         kzg: kzg::KZGVerifyingKey {
             g2: [g2_0, g2_1],
-            g1,
+            g1: g1.into(),
             lines: [[[LineEvaluationAff {
                 r0: E2 {
                     a0: Fr::zero(),
