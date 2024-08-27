@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Error, Result};
 use ark_bn254::{Fq, G1Affine, G2Affine};
-use ark_ec::AffineRepr;
-use ark_ff::{BigInteger, PrimeField};
+use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, SerializationError};
 use std::{
     cmp::{Ord, Ordering},
@@ -10,8 +9,7 @@ use std::{
 
 use crate::{
     constants::{
-        ERR_FAILED_TO_GET_X, ERR_FAILED_TO_GET_Y, GNARK_COMPRESSED_INFINITY,
-        GNARK_COMPRESSED_NEGATIVE, GNARK_COMPRESSED_POSTIVE, GNARK_MASK,
+        GNARK_COMPRESSED_INFINITY, GNARK_COMPRESSED_NEGATIVE, GNARK_COMPRESSED_POSTIVE, GNARK_MASK,
     },
     converter::{gnark_commpressed_x_to_ark_commpressed_x, is_zeroed},
 };
@@ -68,22 +66,6 @@ fn gnark_compressed_x_to_g2_point(buf: &[u8]) -> Result<G2Affine> {
 
     let bytes = gnark_commpressed_x_to_ark_commpressed_x(&buf.to_vec())?;
     let p = G2Affine::deserialize_compressed::<&[u8]>(&bytes).map_err(Error::msg)?;
-    Ok(p)
-}
-
-pub fn gnark_uncompressed_bytes_to_g1_point(buf: &[u8]) -> Result<G1Affine> {
-    if buf.len() != 64 {
-        return Err(anyhow!(SerializationError::InvalidData));
-    };
-
-    let (x_bytes, y_bytes) = buf.split_at(32);
-
-    let x = Fq::from_be_bytes_mod_order(&x_bytes.to_vec());
-    let y = Fq::from_be_bytes_mod_order(&y_bytes.to_vec());
-    let p = G1Affine::new_unchecked(x, y);
-    if !p.is_on_curve() {
-        return Err(anyhow!(SerializationError::InvalidData));
-    }
     Ok(p)
 }
 
@@ -160,21 +142,4 @@ pub(crate) fn load_groth16_verifying_key_from_bytes(buffer: &[u8]) -> Result<Gro
         },
         public_and_commitment_committed: vec![vec![0u32; 0]],
     })
-}
-
-pub(crate) fn g1_to_bytes(g1: &G1Affine) -> Result<Vec<u8>> {
-    let mut bytes = vec![];
-    let value_x = g1
-        .x()
-        .expect(ERR_FAILED_TO_GET_X)
-        .into_bigint()
-        .to_bytes_be();
-    let value_y = g1
-        .y()
-        .expect(ERR_FAILED_TO_GET_Y)
-        .into_bigint()
-        .to_bytes_be();
-    bytes.extend_from_slice(&value_x);
-    bytes.extend_from_slice(&value_y);
-    Ok(bytes)
 }

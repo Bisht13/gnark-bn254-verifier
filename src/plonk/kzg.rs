@@ -200,7 +200,7 @@ pub(crate) fn batch_verify_multi_points(
 
     let mut quotients = Vec::with_capacity(nb_proofs);
     for i in 0..random_numbers.len() {
-        quotients.push(proofs[i].h);
+        quotients.push(proofs[i].h.into());
     }
 
     let mut folded_quotients = G1::msm(&quotients, &random_numbers);
