@@ -75,7 +75,7 @@ fn gnark_compressed_x_to_g1_point(buf: &[u8]) -> Result<G1Affine> {
         x_bytes.copy_from_slice(buf);
         x_bytes[0] &= !GNARK_MASK;
 
-        let x = Fq::from_be_bytes_mod_order(&x_bytes.to_vec());
+        let x = Fq::from_be_bytes_mod_order(&x_bytes);
         let (y, neg_y) = G1Affine::get_ys_from_x_unchecked(x)
             .ok_or(SerializationError::InvalidData)
             .map_err(Error::msg)?;
@@ -129,9 +129,32 @@ pub fn gnark_uncompressed_bytes_to_g1_point(buf: &[u8]) -> Result<G1Affine> {
 
     let (x_bytes, y_bytes) = buf.split_at(32);
 
-    let x = Fq::from_be_bytes_mod_order(&x_bytes.to_vec());
-    let y = Fq::from_be_bytes_mod_order(&y_bytes.to_vec());
+    let x = Fq::from_be_bytes_mod_order(x_bytes);
+    let y = Fq::from_be_bytes_mod_order(y_bytes);
     let p = G1Affine::new_unchecked(x, y);
+    if !p.is_on_curve() {
+        return Err(anyhow!(SerializationError::InvalidData));
+    }
+    Ok(p)
+}
+
+fn gnark_uncompressed_bytes_to_g2_point(buf: &[u8]) -> Result<G2Affine> {
+    if buf.len() != 128 {
+        return Err(anyhow!(SerializationError::InvalidData));
+    };
+
+    let (x_bytes, y_bytes) = buf.split_at(64);
+
+    let x_c1 = Fq::from_be_bytes_mod_order(&x_bytes[..32]);
+    let x_c0 = Fq::from_be_bytes_mod_order(&x_bytes[32..64]);
+
+    let y_c1 = Fq::from_be_bytes_mod_order(&y_bytes[..32]);
+    let y_c0 = Fq::from_be_bytes_mod_order(&y_bytes[32..64]);
+
+    let x = ark_bn254::Fq2::new(x_c0, x_c1);
+    let y = ark_bn254::Fq2::new(y_c0, y_c1);
+
+    let p = G2Affine::new_unchecked(x, y);
     if !p.is_on_curve() {
         return Err(anyhow!(SerializationError::InvalidData));
     }
@@ -292,17 +315,35 @@ pub(crate) fn load_plonk_proof_from_bytes(buffer: &[u8]) -> Result<PlonkProof> {
 }
 
 pub(crate) fn load_groth16_proof_from_bytes(buffer: &[u8]) -> Result<Groth16Proof> {
-    let ar = gnark_compressed_x_to_g1_point(&buffer[..32])?;
-    let bs = gnark_compressed_x_to_g2_point(&buffer[32..96])?;
-    let krs = gnark_compressed_x_to_g1_point(&buffer[96..128])?;
+    match buffer.len() {
+        128 => {
+            let ar = gnark_compressed_x_to_g1_point(&buffer[..32])?;
+            let bs = gnark_compressed_x_to_g2_point(&buffer[32..96])?;
+            let krs = gnark_compressed_x_to_g1_point(&buffer[96..128])?;
 
-    Ok(Groth16Proof {
-        ar,
-        bs,
-        krs,
-        commitments: Vec::new(),
-        commitment_pok: G1Affine::identity(),
-    })
+            Ok(Groth16Proof {
+                ar,
+                bs,
+                krs,
+                commitments: Vec::new(),
+                commitment_pok: G1Affine::identity(),
+            })
+        }
+        256 => {
+            let ar = gnark_uncompressed_bytes_to_g1_point(&buffer[..64])?;
+            let bs = gnark_uncompressed_bytes_to_g2_point(&buffer[64..192])?;
+            let krs = gnark_uncompressed_bytes_to_g1_point(&buffer[192..256])?;
+
+            Ok(Groth16Proof {
+                ar,
+                bs,
+                krs,
+                commitments: Vec::new(),
+                commitment_pok: G1Affine::identity(),
+            })
+        }
+        _ => Err(anyhow!("Invalid proof length: {}", buffer.len())),
+    }
 }
 
 pub(crate) fn load_groth16_verifying_key_from_bytes(buffer: &[u8]) -> Result<Groth16VerifyingKey> {
